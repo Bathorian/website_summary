@@ -47,7 +47,7 @@ async def scrape_url(url: str) -> ScrapeResult:
         or soup.find("body")
     )
 
-    raw_text = main.get_text(separator="\n", strip=True) if main else ""
+    raw_text = main.get_text(strip=True) if main else ""
 
     # Collapse blank lines and cap length
     lines = [ln for ln in raw_text.splitlines() if ln.strip()]

@@ -1,8 +1,7 @@
+import os
 import httpx
-from encore.runtime import secret
 
-# Encore secrets — set with: encore secret set --type local OpenRouterAPIKey
-openrouter_api_key = secret("OpenRouterAPIKey")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL   = "openai/gpt-4o-mini"
@@ -33,7 +32,7 @@ async def summarize_content(content: str, title: str, model: str = DEFAULT_MODEL
     }
 
     headers = {
-        "Authorization": f"Bearer {openrouter_api_key()}",
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type":  "application/json",
         "HTTP-Referer":  "https://url-summarizer.app",
         "X-Title":       "URL Summarizer",
