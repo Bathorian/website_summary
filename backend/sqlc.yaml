@@ -1,0 +1,18 @@
+version: "2"
+plugins:
+  - name: python
+    wasm:
+      url: https://downloads.sqlc.dev/plugin/sqlc-gen-python_1.3.0.wasm
+      sha256: "7f0feba6b1ff9aba78c25d3092833daf2a5b7a873e37e91fa9b6ee2bc9f7954c"
+sql:
+  - engine: "postgresql"
+    queries: "queries/summaries.sql"
+    schema: "migrations/"
+    gen:
+      plugins:
+        - plugin: python
+          out: "summarizer/db"
+          options:
+            package: "db"
+            emit_async_querier: true
+            emit_pydantic_models: true
