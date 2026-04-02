@@ -1,10 +1,12 @@
 import uuid
+import io
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response
 from pydantic import BaseModel, HttpUrl
 
 from .service import db
 from .scraper import scrape_url
+from .crawler import crawl_website
 from .openrouter import summarize_content, DEFAULT_MODEL
 
 router = APIRouter()
@@ -15,24 +17,40 @@ class AsyncQuerier:
         self.conn = conn
 
     async def get_summary_by_url(self, url):
-        return await self.conn.fetchrow(
-            "SELECT * FROM summaries WHERE url = $1 ORDER BY created_at DESC LIMIT 1",
-            url
-        )
+        async with self.conn.execute(
+            "SELECT * FROM summaries WHERE url = ? ORDER BY created_at DESC LIMIT 1",
+            (url,)
+        ) as cursor:
+            return await cursor.fetchone()
 
     async def insert_summary(self, url, title, summary, model):
-        return await self.conn.fetchrow(
-            "INSERT INTO summaries (url, title, summary, model) VALUES ($1, $2, $3, $4) RETURNING *",
-            url, title, summary, model
+        uid = str(uuid.uuid4())
+        print(f"DEBUG: Inserting summary for {url} with ID {uid}")
+        await self.conn.execute(
+            "INSERT INTO summaries (id, url, title, summary, model) VALUES (?, ?, ?, ?, ?)",
+            (uid, url, title, summary, model)
         )
+        await self.conn.commit()
+        # Return the inserted record
+        async with self.conn.execute("SELECT * FROM summaries WHERE id = ?", (uid,)) as cursor:
+            row = await cursor.fetchone()
+            print(f"DEBUG: Inserted row: {dict(row) if row else 'None'}")
+            return row
 
     async def list_summaries(self):
-        return await self.conn.fetch(
-            "SELECT * FROM summaries ORDER BY created_at DESC LIMIT 20"
-        )
+        async with self.conn.execute(
+            "SELECT * FROM summaries ORDER BY created_at DESC LIMIT 50"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            print(f"DEBUG: Listed {len(rows)} summaries")
+            return rows
 
     async def delete_summary(self, id):
-        await self.conn.execute("DELETE FROM summaries WHERE id = $1", id)
+        id_str = str(id)
+        print(f"DEBUG: Deleting summary with ID {id_str}")
+        await self.conn.execute("DELETE FROM summaries WHERE id = ?", (id_str,))
+        await self.conn.commit()
+        print(f"DEBUG: Deleted summary with ID {id_str}")
 
 
 # ── Request / Response models ────────────────────────────────────────────────
@@ -64,13 +82,19 @@ class ListResponse(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _row_to_item(row) -> SummaryItem:
+    # SQLite row can be accessed by key
+    created_at_val = row['created_at']
+    # If it's a string from SQLite, use it, if it were a datetime we'd isoformat it
+    if hasattr(created_at_val, 'isoformat'):
+        created_at_val = created_at_val.isoformat()
+
     return SummaryItem(
         id=str(row['id']),
         url=row['url'],
         title=row['title'],
         summary=row['summary'],
         model=row['model'],
-        created_at=row['created_at'].isoformat(),
+        created_at=created_at_val,
     )
 
 
@@ -100,29 +124,39 @@ async def summarize(req: SummarizeRequest):
                 print(f"Cache check error: {e}")
                 pass  # cache miss — proceed normally
 
-        # Scrape
+        # 1. Deep Spider Crawl: Scrape up to 11 pages with depth 1 (start URL + top 10 links)
         try:
-            scraped = await scrape_url(url_str)
+            crawl_result = await crawl_website(url_str, max_pages=11, max_depth=1)
+            if crawl_result.get("title") == "Error":
+                raise Exception(crawl_result.get("markdown", "Unknown crawl error"))
+
+            full_context = crawl_result["markdown"]
+            # Global cap: 40,000 chars (approx 10-12k tokens) to ensure reliability
+            if len(full_context) > 40000:
+                print(f"API: Truncating context from {len(full_context)} to 40000 chars.")
+                full_context = full_context[:40000] + "\n\n[... content truncated for token limits ...]"
+
+            page_title = crawl_result["title"]
         except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Failed to scrape URL: {exc}")
+            raise HTTPException(status_code=400, detail=f"Failed to crawl website: {exc}")
 
-        if not scraped.content:
-            raise HTTPException(status_code=422, detail="No readable content found at this URL.")
-
-        # Summarise
+        # 2. Summarise with OpenRouter
         try:
+            print(f"API: Sending {len(full_context)} chars of content to OpenRouter using {req.model or DEFAULT_MODEL}")
             summary_text = await summarize_content(
-                content=scraped.content,
-                title=scraped.title,
+                content=full_context,
+                title=f"Deep Crawl Summary for {page_title}",
                 model=req.model or DEFAULT_MODEL,
             )
+            print("API: Summarization successful")
         except Exception as exc:
+            print(f"API: Summarization failed: {exc}")
             raise HTTPException(status_code=502, detail=f"LLM request failed: {exc}")
 
         # Persist
         row = await q.insert_summary(
             url=url_str,
-            title=scraped.title or None,
+            title=page_title or "Untitled Crawler Result",
             summary=summary_text,
             model=req.model or DEFAULT_MODEL,
         )
@@ -132,7 +166,7 @@ async def summarize(req: SummarizeRequest):
 
 @router.get("/summaries", response_model=ListResponse)
 async def list_summaries_endpoint():
-    """Return the 20 most recent summaries."""
+    """Return the 50 most recent summaries."""
     async with db.conn() as conn:
         q = AsyncQuerier(conn)
         rows = await q.list_summaries()
