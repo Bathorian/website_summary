@@ -1,6 +1,15 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+# Load .env file from the project root (up one level from backend)
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+# Also try current directory for Docker/local consistency
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
 from summarizer.api import router as summarizer_router
 from summarizer.service import db
 
@@ -14,13 +23,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="URL Summarizer API", lifespan=lifespan)
 
-# Enable CORS for frontend
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/docs")
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
@@ -28,4 +42,4 @@ app.include_router(summarizer_router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
