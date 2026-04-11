@@ -1,0 +1,1 @@
+alter table summaries add user_id int;

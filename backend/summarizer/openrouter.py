@@ -6,125 +6,101 @@ import httpx
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL   = "anthropic/claude-sonnet-4.5"
 
-SYSTEM_PROMPT = """You are a senior research analyst specializing in competitive intelligence and business analysis.
-Be factual, neutral, and thorough. Do not pad with filler — every sentence must add information.
-If data for a section is not available, explicitly state "Not found" rather than skipping it."""
+# SYSTEM_PROMPT = """You are a competitive intelligence analyst. Be factual, dense, and neutral.
+# State "Not found" for missing data. No filler — every sentence must add information."""
 
-INSTRUCTIONS = """Your task is to produce an exhaustive, publication-quality intelligence report on this website and the entity behind it.
+# INSTRUCTIONS = """Produce a structured intelligence report on the website and entity behind it.
+#
+# 1. EXECUTIVE SUMMARY
+# 3–4 paragraphs: what it does, who it serves, its scale/maturity, what makes it distinctive, and any red flags or inconsistencies.
+#
+# 2. COMPANY PROFILE
+# Legal name, trading name, aliases · Address and country · Registration/VAT/CoC numbers · Founded (or inferred age) · Headcount/office count · Leadership names and titles · Contact details and social handles
+#
+# 3. PRODUCTS & SERVICES
+# For each offering: name, description, target segment, pricing model, specific prices if listed, key features, and any limitations or fair-use caveats.
+#
+# 4. MARKET POSITIONING
+# B2B/B2C/B2G · Industry verticals · Geographic and language scope · Tone (formal/casual/technical) · Market tier: budget, mid-market, or premium
+#
+# 5. TECHNOLOGY & INFRASTRUCTURE
+# Stack clues, integrations, third-party partnerships, APIs/SDKs, security and compliance claims (GDPR, ISO, SOC2, etc.)
+#
+# 6. CONTENT & SEO
+# Topic clusters and target keywords · Content types present (blog, docs, case studies, etc.) · Freshness signals · Gated content or lead-gen mechanisms
+#
+# 7. TRUST & CREDIBILITY
+# Named clients, logos, case studies · Testimonials or review scores · Awards, press, certifications · Guarantees, SLAs, refund policies
+#
+# 8. KEY FACTS TABLE
+# | Field | Value |
+# |---|---|
+# | Legal name | |
+# | Address | |
+# | Founded | |
+# | Headcount | |
+# | Pricing from | |
+# | Primary language | |
+# | GDPR compliant | |
+#
+# 9. GAPS & CAVEATS
+# What's missing, vague, evasive, or outdated? What needs a follow-up source to verify?
+#
+# 10. ANALYST CONCLUSIONS
+# 2–3 paragraphs: entity type, credibility assessment, and the single most important takeaway."""
 
----
+SYSTEM_PROMPT = """You are a competitive intelligence analyst. Be factual, dense, and neutral.
+Write in tight prose paragraphs — no bullet points, no filler. Every sentence must add information.
+Omit any field or section where data was genuinely not found rather than writing "Not found"."""
 
-## 1. Executive Summary
-Write 3–4 dense paragraphs covering:
-- What the company/site does, who it serves, and its apparent positioning
-- Its scale, reach, and maturity (inferred from tone, breadth, and available data)
-- What makes it distinctive or noteworthy vs. generic alternatives
-- Any red flags, gaps, or inconsistencies observed across the site
+INSTRUCTIONS = """Produce a structured intelligence report on the entity behind this website.
+Use the section headers below. Only include a section if you found relevant data for it.
 
-## 2. Company Profile
-Extract and infer everything available:
-- Full legal name, trading name, and any brand aliases
-- Country, city, and full address (from imprint/contact/footer)
-- Registration number, VAT/tax ID, chamber of commerce references
-- Year founded or inferred age of the business
-- Company size (headcount ranges, office count, team page data)
-- Leadership names and titles (from About/Team pages)
-- Contact details: email, phone, support channels, social media handles
+EXECUTIVE SUMMARY
+What the entity does, who it serves, its scale and maturity, what makes it distinctive, and any red flags or inconsistencies.
 
-## 3. Products & Services — Deep Breakdown
-For each distinct product, service, or offering found:
-- Name and one-line description
-- Target user/customer segment
-- Pricing model (free/paid/freemium/enterprise/quote-based)
-- Specific pricing figures if listed
-- Key features or differentiators mentioned
-- Any limitations, caveats, or fair-use policies stated
+COMPANY PROFILE
+Legal name, trading name, aliases, address, country, registration/VAT/CoC numbers, founding date or inferred age, headcount, office count, leadership names and titles, contact details, and social handles.
 
-## 4. Target Audience & Market Positioning
-- Primary and secondary customer segments (B2B/B2C/B2G, industry verticals)
-- Geographic focus (local, national, EU, global)
-- Language(s) the site serves
-- Tone and communication style (formal/casual/technical/sales-heavy)
-- Where they appear to sit in the market: budget, mid-market, or premium?
+PRODUCTS & SERVICES
+For each offering: name, description, target segment, pricing model, specific prices, key features, and any limitations or fair-use caveats.
 
-## 5. Technology & Infrastructure Signals
-- Tech stack clues visible in the content (platforms, frameworks, tools mentioned)
-- Integrations or third-party partnerships referenced
-- APIs, developer docs, or SDKs advertised
-- Security or compliance claims (ISO, GDPR, SOC2, etc.)
+MARKET POSITIONING
+B2B/B2C/B2G classification, industry verticals, geographic and language scope, tone, and market tier (budget, mid-market, or premium).
 
-## 6. Content & SEO Signals
-- Main topic clusters and keywords the site appears to target
-- Types of content present (blog, docs, case studies, whitepapers, videos)
-- Apparent content freshness (dates, version numbers, references to recent events)
-- Any gated content or lead-gen mechanisms described
+TECHNOLOGY & INFRASTRUCTURE
+Stack clues, integrations, third-party partnerships, APIs or SDKs, and security or compliance claims (GDPR, ISO, SOC2, etc.).
 
-## 7. Trust, Social Proof & Credibility Signals
-- Client logos, named customers, or case studies mentioned
-- Testimonials or review scores cited
-- Awards, certifications, press mentions, or partnerships listed
-- Guarantees, SLAs, or refund policies stated
+TRUST & CREDIBILITY
+Named clients, logos, case studies, testimonials, review scores, awards, press mentions, certifications, guarantees, SLAs, and refund policies.
 
-## 8. Key Facts — Rapid-Reference Table
-Produce a compact table of the most extractable hard facts:
-| Field | Value |
-|---|---|
-| Legal name | |
-| Address | |
-| Founded | |
-| Headcount | |
-| Pricing from | |
-| Primary language | |
-| GDPR compliant | |
+KEY FACTS
+Present as a two-column table of every concrete data point found (names, numbers, dates, URLs).
 
-## 9. Gaps & Caveats
-- What important information was missing or vague?
-- Where does the site appear evasive, outdated, or inconsistent?
-- What would require a follow-up source to verify?
+GAPS & OPEN QUESTIONS
+What is missing, vague, or evasive, and what would need a follow-up source to verify.
 
-## 10. Analyst Conclusions
-2–3 paragraphs of synthesis: what kind of entity is this, how credible does it appear,
-and what is the single most important thing to know about it?"""
+ANALYST CONCLUSIONS
+Entity type, credibility assessment, and the single most important takeaway."""
 
 
 async def summarize_content(
     content: str,
     title: str,
     model: str = DEFAULT_MODEL,
-    instructions: str | None = None,  # ← default to None
+    instructions: str | None = None,
 ) -> str:
-    # Get the latest API key from environment
+    """
+    Call OpenRouter with the scraped content and return a markdown intelligence report.
+    """
     api_key = os.environ.get("OPENROUTER_API_KEY")
 
-
-    if not api_key:
-        print("DEBUG: API Key not found in os.environ. Searching for alternative keys...")
-        # Check if it was accidentally prefixed with spaces or quotes
-        for k, v in os.environ.items():
-            if "OPENROUTER" in k:
-                print(f"DEBUG: Found similar key: '{k}' with length {len(v)}")
-
     if not api_key or len(api_key.strip()) < 10:
-        print("CRITICAL: OPENROUTER_API_KEY is missing or too short!")
-        print(f"DEBUG: Key length: {len(api_key) if api_key else 0}")
-        print(f"DEBUG: All Environment Keys: {sorted(list(os.environ.keys()))}")
-        raise Exception(f"OPENROUTER_API_KEY is missing (current length: {len(api_key) if api_key else 0}). Please set it in your PyCharm environment variables or .env file.")
+        raise Exception(f"OPENROUTER_API_KEY is missing or too short (length: {len(api_key) if api_key else 0}). Please set it in your environment variables.")
 
     if instructions is None:
         instructions = INSTRUCTIONS
-    """
-    Call OpenRouter with the scraped content and return a markdown intelligence report.
-
-    Args:
-        content:      The scraped text of the website pages.
-        title:        The page or site title, used as context.
-        model:        The OpenRouter model string to use.
-        instructions: The report template/instructions injected into the user turn.
-                      Defaults to the standard 10-section INSTRUCTIONS constant.
-
-    Returns:
-        A markdown-formatted intelligence report as a string.
-    """
+    
     user_message = f"{instructions}\n\n---\n\nPage title: {title}\n\n{content}"
 
     payload = {

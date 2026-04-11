@@ -1,5 +1,5 @@
-CREATE TABLE summaries (
-    id          UUID        PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS summaries (
+    id          TEXT        PRIMARY KEY,
     url         TEXT        NOT NULL,
     title       TEXT,
     summary     TEXT        NOT NULL,
@@ -7,5 +7,5 @@ CREATE TABLE summaries (
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_summaries_url        ON summaries (url);
-CREATE INDEX idx_summaries_created_at ON summaries (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_summaries_url        ON summaries (url);
+CREATE INDEX IF NOT EXISTS idx_summaries_created_at ON summaries (created_at DESC);

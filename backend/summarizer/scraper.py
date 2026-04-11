@@ -4,14 +4,6 @@ from urllib.parse import urljoin, urlparse
 import markdownify
 
 
-class ScrapeResult:
-    def __init__(self, title: str, content: str, url: str, markdown: str = ""):
-        self.title = title
-        self.content = content
-        self.url = url
-        self.markdown = markdown
-
-
 async def scrape_url(url: str, extract_links: bool = False) -> dict:
     """
     Fetch a URL and extract clean text content and markdown.

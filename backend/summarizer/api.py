@@ -1,79 +1,57 @@
 import uuid
-import io
 import os
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends, Response
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, HttpUrl
 
 from .service import db
-from .scraper import scrape_url
 from .crawler import crawl_website
 from .openrouter import summarize_content, DEFAULT_MODEL
+from .auth import get_current_user
+from fastapi import APIRouter, HTTPException, Depends, Request
 
 router = APIRouter()
 
-# ── Mock Querier (since sqlc generated one might be missing) ──
+# ── Database Querier ─────────────────────────────────────────────────────────
 class AsyncQuerier:
     def __init__(self, conn):
         self.conn = conn
-        self.is_postgres = db.is_postgres
 
-    async def get_summary_by_url(self, url):
-        query = "SELECT * FROM summaries WHERE url = $1 ORDER BY created_at DESC LIMIT 1" if self.is_postgres else \
-                "SELECT * FROM summaries WHERE url = ? ORDER BY created_at DESC LIMIT 1"
+    async def get_summary_by_url(self, url, user_id):
+        query = "SELECT * FROM summaries WHERE url = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1"
         
-        if self.is_postgres:
-            return await self.conn.fetchrow(query, url)
-        else:
-            async with self.conn.execute(query, (url,)) as cursor:
-                return await cursor.fetchone()
+        async with self.conn.execute(query, (url, user_id)) as cursor:
+            return await cursor.fetchone()
 
-    async def insert_summary(self, url, title, summary, model):
+    async def insert_summary(self, url, title, summary, model, user_id):
         uid = str(uuid.uuid4())
-        print(f"DEBUG: Inserting summary for {url} with ID {uid}")
+        print(f"DEBUG: Inserting summary for {url} with ID {uid} and user {user_id}")
         
-        if self.is_postgres:
-            query = "INSERT INTO summaries (id, url, title, summary, model) VALUES ($1, $2, $3, $4, $5)"
-            try:
-                await self.conn.execute(query, uuid.UUID(uid), url, title, summary, model)
-                row = await self.conn.fetchrow("SELECT * FROM summaries WHERE id = $1", uuid.UUID(uid))
-                print(f"DEBUG: Inserted row in Postgres: {row is not None}")
-                return row
-            except Exception as e:
-                print(f"ERROR: Postgres insertion failed: {e}")
-                raise e
-        else:
-            query = "INSERT INTO summaries (id, url, title, summary, model) VALUES (?, ?, ?, ?, ?)"
-            try:
-                await self.conn.execute(query, (uid, url, title, summary, model))
-                await self.conn.commit()
-                async with self.conn.execute("SELECT * FROM summaries WHERE id = ?", (uid,)) as cursor:
-                    row = await cursor.fetchone()
-                    print(f"DEBUG: Inserted row in SQLite: {dict(row) if row else 'None'}")
-                    return row
-            except Exception as e:
-                print(f"ERROR: SQLite insertion failed: {e}")
-                raise e
-
-    async def list_summaries(self):
-        query = "SELECT * FROM summaries ORDER BY created_at DESC LIMIT 50"
-        if self.is_postgres:
-            return await self.conn.fetch(query)
-        else:
-            async with self.conn.execute(query) as cursor:
-                rows = await cursor.fetchall()
-                print(f"DEBUG: Listed {len(rows)} summaries")
-                return rows
-
-    async def delete_summary(self, id):
-        id_val = id if self.is_postgres else str(id)
-        print(f"DEBUG: Deleting summary with ID {id_val}")
-        
-        if self.is_postgres:
-            await self.conn.execute("DELETE FROM summaries WHERE id = $1", id_val)
-        else:
-            await self.conn.execute("DELETE FROM summaries WHERE id = ?", (id_val,))
+        query = "INSERT INTO summaries (id, url, title, summary, model, user_id) VALUES (?, ?, ?, ?, ?, ?)"
+        try:
+            await self.conn.execute(query, (uid, url, title, summary, model, user_id))
             await self.conn.commit()
+            async with self.conn.execute("SELECT * FROM summaries WHERE id = ?", (uid,)) as cursor:
+                row = await cursor.fetchone()
+                print(f"DEBUG: Inserted row in SQLite: {dict(row) if row else 'None'}")
+                return row
+        except Exception as e:
+            print(f"ERROR: SQLite insertion failed: {e}")
+            raise e
+
+    async def list_summaries(self, user_id):
+        query = "SELECT * FROM summaries WHERE user_id = ? ORDER BY created_at DESC LIMIT 50"
+        async with self.conn.execute(query, (user_id,)) as cursor:
+            rows = await cursor.fetchall()
+            print(f"DEBUG: Listed {len(rows)} summaries for user {user_id}")
+            return rows
+
+    async def delete_summary(self, id, user_id):
+        id_val = str(id)
+        print(f"DEBUG: Deleting summary with ID {id_val} for user {user_id}")
+        
+        await self.conn.execute("DELETE FROM summaries WHERE id = ? AND user_id = ?", (id_val, user_id))
+        await self.conn.commit()
         print(f"DEBUG: Deleted summary with ID {id_val}")
 
 
@@ -125,7 +103,8 @@ def _row_to_item(row) -> SummaryItem:
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.post("/summarize", response_model=SummarizeResponse)
-async def summarize(req: SummarizeRequest):
+async def summarize(req: SummarizeRequest, request: Request):
+    user_id = await get_current_user(request)
     """
     Main endpoint: scrape a URL, summarise with an LLM, persist, and return.
     Uses a simple URL-level cache (last summary per URL) unless force_refresh.
@@ -139,7 +118,7 @@ async def summarize(req: SummarizeRequest):
         try:
             async with db.conn() as conn:
                 q = AsyncQuerier(conn)
-                existing = await q.get_summary_by_url(url=url_str)
+                existing = await q.get_summary_by_url(url=url_str, user_id=user_id)
                 if existing:
                     return SummarizeResponse(
                         summary=_row_to_item(existing),
@@ -155,8 +134,9 @@ async def summarize(req: SummarizeRequest):
     # 1. Deep Spider Crawl: Scrape up to 11 pages with depth 1 (start URL + top 10 links)
     try:
         crawl_result = await crawl_website(url_str, max_pages=11, max_depth=1)
-        if crawl_result.get("title") == "Error":
-            raise Exception(crawl_result.get("markdown", "Unknown crawl error"))
+        if not crawl_result or crawl_result.get("title") == "Error":
+            error_msg = crawl_result.get("markdown", "Unknown crawl error") if crawl_result else "No content found"
+            raise Exception(error_msg)
 
         full_context = crawl_result["markdown"]
         # Global cap: 40,000 chars (approx 10-12k tokens) to ensure reliability
@@ -190,28 +170,33 @@ async def summarize(req: SummarizeRequest):
                 title=page_title or "Untitled Crawler Result",
                 summary=summary_text,
                 model=req.model or DEFAULT_MODEL,
+                user_id=user_id,
             )
             if not row:
                 print(f"ERROR: insert_summary returned None for {url_str}")
                 raise HTTPException(status_code=500, detail="Database insertion failed (no row returned)")
             
-            return SummarizeResponse(summary=_row_to_item(row), cached=False)
+            summary_item = _row_to_item(row)
+            print(f"DEBUG: Returning summary item: {summary_item.id}")
+            return SummarizeResponse(summary=summary_item, cached=False)
     except Exception as e:
         print(f"ERROR: Database persistence failed for {url_str}: {e}")
         raise HTTPException(status_code=500, detail=f"Database persistence failed: {e}")
 
 
 @router.get("/summaries", response_model=ListResponse)
-async def list_summaries_endpoint():
+async def list_summaries_endpoint(request: Request):
+    user_id = await get_current_user(request)
     """Return the 50 most recent summaries."""
     async with db.conn() as conn:
         q = AsyncQuerier(conn)
-        rows = await q.list_summaries()
+        rows = await q.list_summaries(user_id=user_id)
     return ListResponse(summaries=[_row_to_item(r) for r in rows])
 
 
 @router.delete("/summaries/{id}")
-async def delete_summary_endpoint(id: str):
+async def delete_summary_endpoint(id: str, request: Request):
+    user_id = await get_current_user(request)
     """Delete a summary by ID."""
     try:
         parsed_id = uuid.UUID(id)
@@ -220,7 +205,7 @@ async def delete_summary_endpoint(id: str):
 
     async with db.conn() as conn:
         q = AsyncQuerier(conn)
-        await q.delete_summary(id=parsed_id)
+        await q.delete_summary(id=parsed_id, user_id=user_id)
     return {"status": "ok"}
 
 
@@ -229,15 +214,15 @@ async def db_status():
     """Diagnostic endpoint to check database connection status."""
     try:
         async with db.conn() as conn:
-            q = AsyncQuerier(conn)
-            rows = await q.list_summaries()
-            count = len(rows)
+            # Check if we can query at all
+            async with conn.execute("SELECT COUNT(*) FROM summaries") as cursor:
+                row = await cursor.fetchone()
+                count = row[0] if row else 0
             return {
                 "status": "connected",
                 "database_url": db.DATABASE_URL_RAW,
-                "is_postgres": db.is_postgres,
                 "summary_count": count,
-                "absolute_path": os.path.abspath(db.DATABASE_URL) if not db.is_postgres else "N/A"
+                "absolute_path": os.path.abspath(db.DATABASE_URL)
             }
     except Exception as e:
         return {
