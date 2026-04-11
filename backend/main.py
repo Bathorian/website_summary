@@ -1,14 +1,20 @@
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-# Load .env file from the project root (up one level from backend)
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
-# Also try current directory for Docker/local consistency
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+# Load .env file from the project root or current directory
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(root_dir, ".env"))
+load_dotenv(".env")
+
+# Verify critical environment variables
+if not os.environ.get("OPENROUTER_API_KEY"):
+    print("WARNING: OPENROUTER_API_KEY is not set. Summarization will fail.")
+if not os.environ.get("CLERK_SECRET_KEY"):
+    print("WARNING: CLERK_SECRET_KEY is not set. All users will be 'guest_user'.")
 
 from summarizer.api import router as summarizer_router
 from summarizer.service import db
