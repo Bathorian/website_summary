@@ -5,7 +5,7 @@ A web application that summarizes content from any URL using LLMs.
 ## Features
 - **Backend**: FastAPI with `uv` for lightning-fast dependency management and builds.
 - **Frontend**: Vue.js with Vite.
-- **Database**: PostgreSQL (managed via Docker).
+- **Database**: SQLite (local file or Docker volume).
 - **LLM**: Powered by OpenRouter (GPT-4o-mini by default).
 
 ## Getting Started
@@ -38,3 +38,8 @@ uv sync
 cd backend
 uv run uvicorn main:app --reload
 ```
+
+## Database Migrations
+The backend automatically applies migrations from `backend/migrations/*.up.sql` on startup. To modify the schema:
+1. Add a new `.up.sql` file in `backend/migrations/` (e.g., `2_add_field.up.sql`).
+2. Restart the backend service.
