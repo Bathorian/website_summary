@@ -296,7 +296,6 @@ watch(isSignedIn, (newVal) => {
     <!-- Main Content -->
     <main class="main-content">
       <header class="top-nav">
-        <button @click="sidebarCollapsed = !sidebarCollapsed" class="menu-btn" v-if="sidebarCollapsed || isMobile">☰</button>
 
       </header>
 
