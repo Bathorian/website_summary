@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import {ref, onMounted, watch} from 'vue'
 import {useAuth, SignInButton, UserButton, UserProfile, useClerk, useSession, useUser} from '@clerk/vue'
+import {AppConfig} from '@/lib/config'
 
-console.log('API BASE:', import.meta.env.VITE_API_URL)
+console.log('API BASE:', AppConfig.apiUrl)
 const url = ref('')
 const selectedModel = ref('google/gemini-2.5-flash')
 const loading = ref(false)
@@ -71,7 +72,7 @@ const MODELS = [
   {id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash'},
 ]
 
-const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : 'http://localhost:8000/api'
+const API_BASE = `${AppConfig.apiUrl}/api`
 const VERSION = 'v-2026-04-11-23-15'
 
 async function fetchHistory() {
@@ -324,6 +325,9 @@ watch(isSignedIn, (newVal) => {
             <line x1="3" y1="18" x2="21" y2="18"></line>
           </svg>
         </button>
+        <div v-if="AppConfig.envLabel" :class="['env-badge', AppConfig.envColor]">
+          {{ AppConfig.envLabel }}
+        </div>
       </header>
       <div class="content-area">
         <div v-if="error" class="error-msg">

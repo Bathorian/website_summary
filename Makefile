@@ -4,11 +4,11 @@
 
 # Start only the backend service
 backend:
-	docker compose up -d backend
+	cd backend && uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # Start only the frontend service
 frontend:
-	docker compose up -d frontend
+	cd frontend && npm run dev
 
 # Start all services
 all:
