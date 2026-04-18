@@ -31,12 +31,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="URL Summarizer API", lifespan=lifespan)
 
-
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/docs")
-
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -49,6 +43,12 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/docs")
+
 
 app.include_router(summarizer_router, prefix="/api")
 

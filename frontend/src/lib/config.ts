@@ -16,18 +16,18 @@ export const AppConfig = {
     envColor: getEnvColor(),
 }
 
-// backend API url
 function getAPIBaseURL() {
-    if (isProduction) {
-        return Environment('prod') // prod deployment url
+    // Primary: explicit env var — works on Fly.io, Vercel, anywhere
+    if (import.meta.env.VITE_API_URL) {
+        return import.meta.env.VITE_API_URL
     }
-    if (isTest) {
-        return Environment('test') // test deployment url
-    }
-    if (isPreview) {
-        return PreviewEnv(prID) // pr deployment url
-    }
-    return Local // localhost backend
+
+    // Fallback: Vercel-specific logic
+    if (isProduction) return Environment('prod')
+    if (isTest) return Environment('test')
+    if (isPreview) return PreviewEnv(prID)
+
+    return Local
 }
 
 function getEnvLabel(): string | null {
