@@ -10,7 +10,7 @@ const loading = ref(false)
 const result = ref<any>(null)
 const error = ref<string | null>(null)
 const history = ref<any[]>([])
-const sidebarCollapsed = ref(false)
+const sidebarCollapsed = ref(window.innerWidth <= 768)
 const isMobile = ref(false)
 const showProfile = ref(false)
 
@@ -61,9 +61,6 @@ watch(isSignedIn, (newVal) => {
 
 const checkMobile = () => {
   isMobile.value = window.innerWidth <= 768
-  if (isMobile.value) {
-    sidebarCollapsed.value = true
-  }
 }
 
 const MODELS = [
@@ -313,18 +310,6 @@ watch(isSignedIn, (newVal) => {
     <!-- Main Content -->
     <main class="main-content">
       <header class="top-nav">
-        <button
-            v-if="sidebarCollapsed"
-            @click="sidebarCollapsed = false"
-            class="hamburger-btn"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round">
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
-        </button>
         <div v-if="AppConfig.envLabel" :class="['env-badge', AppConfig.envColor]">
           {{ AppConfig.envLabel }}
         </div>
@@ -779,22 +764,6 @@ watch(isSignedIn, (newVal) => {
 
 /* Mobile Responsiveness */
 @media (max-width: 768px) {
-  .sidebar {
-    position: absolute;
-    height: 100%;
-    transform: translateX(-100%);
-    width: 280px;
-  }
-
-  .sidebar-hidden .sidebar {
-    transform: translateX(-100%);
-    width: 280px;
-  }
-
-  .app-layout:not(.sidebar-hidden) .sidebar {
-    transform: translateX(0);
-    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
-  }
 
   .main-content {
     width: 100vw;
