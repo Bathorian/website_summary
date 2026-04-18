@@ -1,13 +1,11 @@
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
-CREATE TABLE summaries (
-    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE IF NOT EXISTS summaries (
+    id          TEXT        PRIMARY KEY,
     url         TEXT        NOT NULL,
     title       TEXT,
     summary     TEXT        NOT NULL,
     model       TEXT        NOT NULL DEFAULT 'openai/gpt-4o-mini',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_summaries_url        ON summaries (url);
-CREATE INDEX idx_summaries_created_at ON summaries (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_summaries_url        ON summaries (url);
+CREATE INDEX IF NOT EXISTS idx_summaries_created_at ON summaries (created_at DESC);
