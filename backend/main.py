@@ -19,6 +19,7 @@ if not os.environ.get("CLERK_SECRET_KEY"):
 from summarizer.api import router as summarizer_router
 from summarizer.service import db
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -27,16 +28,16 @@ async def lifespan(app: FastAPI):
     # Shutdown
     await db.disconnect()
 
+
 app = FastAPI(title="URL Summarizer API", lifespan=lifespan)
-
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/docs")
-
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "https://distill-frontend-still-darkness-2746.fly.dev",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -44,8 +45,14 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/docs")
+
+
 app.include_router(summarizer_router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="127.0.0.1", port=8000)

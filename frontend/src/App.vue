@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
-import { useAuth, SignInButton, UserButton, UserProfile, useClerk, useSession, useUser } from '@clerk/vue'
+import {ref, onMounted, watch} from 'vue'
+import {useAuth, SignInButton, UserButton, UserProfile, useClerk, useSession, useUser} from '@clerk/vue'
+import {AppConfig} from '@/lib/config'
 
-
-
+console.log('API BASE:', AppConfig.apiUrl)
 const url = ref('')
 const selectedModel = ref('google/gemini-2.5-flash')
 const loading = ref(false)
@@ -16,8 +16,8 @@ const showProfile = ref(false)
 
 const auth = useAuth()
 const clerk = useClerk()
-const { session } = useSession()
-const { user } = useUser()
+const {session} = useSession()
+const {user} = useUser()
 
 const getAuthToken = async () => {
   try {
@@ -28,7 +28,7 @@ const getAuthToken = async () => {
   } catch (e) {
     console.warn('auth.getToken failed', e)
   }
-  
+
   if (session.value && typeof session.value.getToken === 'function') {
     return await session.value.getToken()
   }
@@ -47,7 +47,7 @@ async function handleSignOut() {
   }
 }
 
-const { isSignedIn, isLoaded } = auth
+const {isSignedIn, isLoaded} = auth
 
 watch(isLoaded, (newVal) => {
   console.log('Clerk Loaded:', newVal)
@@ -67,12 +67,12 @@ const checkMobile = () => {
 }
 
 const MODELS = [
-  { id: 'anthropic/claude-sonnet-4.5', name: 'Claude 4.5 Sonnet' },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini' },
-  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+  {id: 'anthropic/claude-sonnet-4.5', name: 'Claude 4.5 Sonnet'},
+  {id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini'},
+  {id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash'},
 ]
 
-const API_BASE = 'http://localhost:8000/api'
+const API_BASE = `${AppConfig.apiUrl}/api`
 const VERSION = 'v-2026-04-11-23-15'
 
 async function fetchHistory() {
@@ -119,7 +119,7 @@ async function summarize() {
     console.log('Token acquired')
     const res = await fetch(`${API_BASE}/summarize`, {
       method: 'POST',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
@@ -241,13 +241,23 @@ watch(isSignedIn, (newVal) => {
       <div class="sidebar-header">
         <div class="sidebar-top-row">
           <div v-if="!sidebarCollapsed" class="sidebar-title">Distill</div>
-          <button @click="sidebarCollapsed = !sidebarCollapsed" class="inner-toggle-btn" :title="sidebarCollapsed ? 'Expand' : 'Collapse'">
-            <svg v-if="!sidebarCollapsed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
-            <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><polyline points="9 12 15 12 15 21"></polyline></svg>
+          <button @click="sidebarCollapsed = !sidebarCollapsed" class="inner-toggle-btn"
+                  :title="sidebarCollapsed ? 'Expand' : 'Collapse'">
+            <svg v-if="!sidebarCollapsed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+            <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <polyline points="9 12 15 12 15 21"></polyline>
+            </svg>
           </button>
         </div>
-        
-        <button @click="startNew" class="menu-action-btn new-chat" :class="{ 'collapsed': sidebarCollapsed }" title="New Summary">
+
+        <button @click="startNew" class="menu-action-btn new-chat" :class="{ 'collapsed': sidebarCollapsed }"
+                title="New Summary">
           <span class="icon">+</span> <span v-if="!sidebarCollapsed">New summary</span>
         </button>
       </div>
@@ -256,15 +266,17 @@ watch(isSignedIn, (newVal) => {
         <div class="history-label" v-if="!sidebarCollapsed">Recents</div>
         <div v-if="history.length > 0" class="history-list">
           <div
-            v-for="item in history"
-            :key="item.id"
-            class="history-item"
-            :class="{ active: result?.id === item.id, 'collapsed': sidebarCollapsed }"
-            @click="selectHistoryItem(item)"
+              v-for="item in history"
+              :key="item.id"
+              class="history-item"
+              :class="{ active: result?.id === item.id, 'collapsed': sidebarCollapsed }"
+              @click="selectHistoryItem(item)"
           >
             <div class="item-title" v-if="!sidebarCollapsed">{{ item.title || 'Untitled' }}</div>
             <div class="item-dot" v-else>•</div>
-            <button v-if="!sidebarCollapsed" @click="deleteSummary(item.id, $event)" class="delete-btn" title="Delete">×</button>
+            <button v-if="!sidebarCollapsed" @click="deleteSummary(item.id, $event)" class="delete-btn" title="Delete">
+              ×
+            </button>
           </div>
         </div>
         <div v-else-if="!sidebarCollapsed" class="empty-history">No history yet</div>
@@ -273,22 +285,27 @@ watch(isSignedIn, (newVal) => {
       <div class="sidebar-footer" :class="{ 'collapsed': sidebarCollapsed }">
         <div v-if="isSignedIn" class="user-profile-wrapper">
           <div class="user-profile-clickable" title="Sign Out" @click="handleSignOut">
-            <UserButton after-sign-out-url="/" @click.stop />
+            <UserButton after-sign-out-url="/" @click.stop/>
             <div class="user-info" v-if="!sidebarCollapsed">
               <div class="user-name">{{ user?.firstName || user?.username || 'User' }}</div>
               <div class="user-plan">Free plan</div>
             </div>
             <div class="sign-out-icon" v-if="!sidebarCollapsed">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
             </div>
           </div>
         </div>
         <div v-else class="user-profile">
-           <SignInButton mode="modal">
-             <button class="menu-action-btn sign-in-btn">
-               <span class="icon">👤</span> <span v-if="!sidebarCollapsed">Sign In</span>
-             </button>
-           </SignInButton>
+          <SignInButton mode="redirect">
+            <button class="menu-action-btn sign-in-btn">
+              <span class="icon">👤</span> <span v-if="!sidebarCollapsed">Sign In</span>
+            </button>
+          </SignInButton>
         </div>
       </div>
     </aside>
@@ -296,10 +313,22 @@ watch(isSignedIn, (newVal) => {
     <!-- Main Content -->
     <main class="main-content">
       <header class="top-nav">
-        <button @click="sidebarCollapsed = !sidebarCollapsed" class="menu-btn" v-if="sidebarCollapsed || isMobile">☰</button>
-
+        <button
+            v-if="sidebarCollapsed"
+            @click="sidebarCollapsed = false"
+            class="hamburger-btn"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        <div v-if="AppConfig.envLabel" :class="['env-badge', AppConfig.envColor]">
+          {{ AppConfig.envLabel }}
+        </div>
       </header>
-
       <div class="content-area">
         <div v-if="error" class="error-msg">
           {{ error }}
@@ -310,15 +339,16 @@ watch(isSignedIn, (newVal) => {
             <div class="hero">
               <div class="branding">
                 <div class="logo">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="#d4ff00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2l9 4.5v11L12 22l-9-4.5v-11z" />
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#d4ff00" stroke-width="2" stroke-linecap="round"
+                       stroke-linejoin="round">
+                    <path d="M12 2l9 4.5v11L12 22l-9-4.5v-11z"/>
                   </svg>
                 </div>
                 <h1 class="brand-name">Distill</h1>
               </div>
               <p class="quote">Drop a URL. Get the essence.</p>
               <p style="margin-bottom: 2rem; color: #9ca3af;">Please sign in to start summarizing websites.</p>
-              <SignInButton mode="modal">
+              <SignInButton mode="redirect">
                 <button class="center-start-btn">Sign In to Get Started</button>
               </SignInButton>
             </div>
@@ -327,61 +357,62 @@ watch(isSignedIn, (newVal) => {
 
         <template v-else>
           <div v-if="result" class="result-view">
-          <div class="result-header">
-            <div class="result-title-row">
-              <h1 class="result-title">{{ result.title || 'Untitled Page' }}</h1>
-              <button @click="copyToClipboard" class="copy-btn-top" :class="{ success: copySuccess }">
-                <span class="icon">{{ copySuccess ? '✓' : '📋' }}</span>
-                {{ copySuccess ? 'Copied!' : 'Copy' }}
-              </button>
-            </div>
-            <div class="result-meta">
-              <a :href="result.url" target="_blank" class="source-link">Source ↗</a>
-            </div>
-            <div class="result-actions">This summary is editable
-            </div>
-          </div>
-          <div class="summary-content">
-            <textarea 
-              class="summary-textarea" 
-              v-model="result.summary"
-              rows="25"
-              placeholder="Edit the summary here..."
-            ></textarea>
-          </div>
-        </div>
-
-        <div v-else-if="!loading" class="welcome-view">
-          <div class="hero">
-            <div class="branding">
-              <div class="logo">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#d4ff00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 2l9 4.5v11L12 22l-9-4.5v-11z" />
-                </svg>
-              </div>
-              <h1 class="brand-name">Distill</h1>
-            </div>
-            <p class="quote">Drop a URL. Get the essence.</p>
-            <div class="center-input-wrapper">
-              <input
-                v-model="url"
-                type="url"
-                placeholder="Paste URL to summarize..."
-                @keyup.enter="summarize"
-                class="center-input"
-              />
-              <div class="center-actions">
-                <select v-model="selectedModel" class="center-model-select">
-                  <option v-for="m in MODELS" :key="m.id" :value="m.id">{{ m.name }}</option>
-                </select>
-                <button @click="summarize" :disabled="loading || !url" class="center-start-btn">
-                  Start Summary
+            <div class="result-header">
+              <div class="result-title-row">
+                <h1 class="result-title">{{ result.title || 'Untitled Page' }}</h1>
+                <button @click="copyToClipboard" class="copy-btn-top" :class="{ success: copySuccess }">
+                  <span class="icon">{{ copySuccess ? '✓' : '📋' }}</span>
+                  {{ copySuccess ? 'Copied!' : 'Copy' }}
                 </button>
               </div>
+              <div class="result-meta">
+                <a :href="result.url" target="_blank" class="source-link">Source ↗</a>
+              </div>
+              <div class="result-actions">This summary is editable
+              </div>
+            </div>
+            <div class="summary-content">
+            <textarea
+                class="summary-textarea"
+                v-model="result.summary"
+                rows="25"
+                placeholder="Edit the summary here..."
+            ></textarea>
             </div>
           </div>
-        </div>
-      </template>
+
+          <div v-else-if="!loading" class="welcome-view">
+            <div class="hero">
+              <div class="branding">
+                <div class="logo">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#d4ff00" stroke-width="2" stroke-linecap="round"
+                       stroke-linejoin="round">
+                    <path d="M12 2l9 4.5v11L12 22l-9-4.5v-11z"/>
+                  </svg>
+                </div>
+                <h1 class="brand-name">Distill</h1>
+              </div>
+              <p class="quote">Drop a URL. Get the essence.</p>
+              <div class="center-input-wrapper">
+                <input
+                    v-model="url"
+                    type="url"
+                    placeholder="Paste URL to summarize..."
+                    @keyup.enter="summarize"
+                    class="center-input"
+                />
+                <div class="center-actions">
+                  <select v-model="selectedModel" class="center-model-select">
+                    <option v-for="m in MODELS" :key="m.id" :value="m.id">{{ m.name }}</option>
+                  </select>
+                  <button @click="summarize" :disabled="loading || !url" class="center-start-btn">
+                    Start Summary
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
 
         <div v-if="loading && !result" class="loading-view">
           <div class="spinner"></div>
@@ -392,12 +423,12 @@ watch(isSignedIn, (newVal) => {
       <footer v-if="result || loading" class="input-container">
         <div class="chat-input-wrapper">
           <input
-            v-model="url"
-            type="url"
-            placeholder="Paste URL to summarize..."
-            @keyup.enter="summarize"
-            :disabled="loading"
-            class="chat-input"
+              v-model="url"
+              type="url"
+              placeholder="Paste URL to summarize..."
+              @keyup.enter="summarize"
+              :disabled="loading"
+              class="chat-input"
           />
           <div class="input-actions">
             <select v-model="selectedModel" :disabled="loading" class="model-select">
@@ -414,7 +445,7 @@ watch(isSignedIn, (newVal) => {
       <div v-if="showProfile" class="profile-modal-overlay" @click.self="showProfile = false">
         <div class="profile-modal-content">
           <button class="close-profile-btn" @click="showProfile = false">×</button>
-          <UserProfile />
+          <UserProfile/>
         </div>
       </div>
     </main>
@@ -762,7 +793,7 @@ watch(isSignedIn, (newVal) => {
 
   .app-layout:not(.sidebar-hidden) .sidebar {
     transform: translateX(0);
-    box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
   }
 
   .main-content {
@@ -1108,14 +1139,16 @@ watch(isSignedIn, (newVal) => {
 .spinner-small {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255,255,255,0.3);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   border-top: 2px solid white;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .center-input-wrapper {
