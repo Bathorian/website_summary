@@ -1,4 +1,4 @@
-.PHONY: backend frontend stop down status clean deploy-backend deploy-frontend deploy
+.PHONY:	backend	frontend	stop	down	status	clean	deploy-backend	deploy-frontend	deploy
 
 # ─── Local Docker ───────────────────────────────────────────
 
