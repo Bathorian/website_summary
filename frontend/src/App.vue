@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import {ref, onMounted, watch} from 'vue'
-import {useAuth, SignInButton, UserButton, UserProfile, useClerk, useSession, useUser} from '@clerk/vue'
+import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
+import {useAuth, SignInButton, UserButton, useClerk, useSession, useUser} from '@clerk/vue'
 import {AppConfig} from '@/lib/config'
 
-console.log('API BASE:', AppConfig.apiUrl)
 const url = ref('')
 const selectedModel = ref('google/gemini-2.5-flash')
 const loading = ref(false)
@@ -12,7 +11,6 @@ const error = ref<string | null>(null)
 const history = ref<any[]>([])
 const sidebarCollapsed = ref(window.innerWidth <= 768)
 const isMobile = ref(false)
-const showProfile = ref(false)
 
 const auth = useAuth()
 const clerk = useClerk()
@@ -49,16 +47,6 @@ async function handleSignOut() {
 
 const {isSignedIn, isLoaded} = auth
 
-watch(isLoaded, (newVal) => {
-  console.log('Clerk Loaded:', newVal)
-  console.log('getToken type:', typeof auth.getToken)
-})
-
-watch(isSignedIn, (newVal) => {
-  console.log('User Signed In:', newVal)
-  console.log('getToken type (isSignedIn):', typeof auth.getToken)
-})
-
 const checkMobile = () => {
   isMobile.value = window.innerWidth <= 768
 }
@@ -68,6 +56,166 @@ const MODELS = [
   {id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini'},
   {id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash'},
 ]
+
+const centerSelectOpen = ref(false)
+const footerSelectOpen = ref(false)
+const centerHighlightedIndex = ref(-1)
+const footerHighlightedIndex = ref(-1)
+const centerSelectRef = ref<HTMLElement | null>(null)
+const footerSelectRef = ref<HTMLElement | null>(null)
+
+const selectedModelName = computed(() => {
+  return MODELS.find((model) => model.id === selectedModel.value)?.name ?? 'Select model'
+})
+
+function closeModelMenus() {
+  centerSelectOpen.value = false
+  footerSelectOpen.value = false
+  centerHighlightedIndex.value = -1
+  footerHighlightedIndex.value = -1
+}
+
+function getModelIndex(modelId: string) {
+  return MODELS.findIndex((model) => model.id === modelId)
+}
+
+function setHighlightedToSelected(menu: 'center' | 'footer') {
+  const selectedIndex = getModelIndex(selectedModel.value)
+  const safeIndex = selectedIndex >= 0 ? selectedIndex : 0
+
+  if (menu === 'center') {
+    centerHighlightedIndex.value = safeIndex
+    return
+  }
+
+  footerHighlightedIndex.value = safeIndex
+}
+
+function openModelMenu(menu: 'center' | 'footer') {
+  if (menu === 'footer' && loading.value) return
+
+  if (menu === 'center') {
+    centerSelectOpen.value = true
+    footerSelectOpen.value = false
+    footerHighlightedIndex.value = -1
+    setHighlightedToSelected('center')
+    return
+  }
+
+  footerSelectOpen.value = true
+  centerSelectOpen.value = false
+  centerHighlightedIndex.value = -1
+  setHighlightedToSelected('footer')
+}
+
+function toggleModelMenu(menu: 'center' | 'footer') {
+  if (menu === 'footer' && loading.value) return
+
+  if (menu === 'center') {
+    if (centerSelectOpen.value) {
+      closeModelMenus()
+    } else {
+      openModelMenu('center')
+    }
+    return
+  }
+
+  if (footerSelectOpen.value) {
+    closeModelMenus()
+    return
+  }
+
+  openModelMenu('footer')
+}
+
+function chooseModel(modelId: string) {
+  selectedModel.value = modelId
+  closeModelMenus()
+}
+
+function moveModelHighlight(menu: 'center' | 'footer', direction: 1 | -1) {
+  if (!MODELS.length) return
+
+  const highlightedIndexRef = menu === 'center' ? centerHighlightedIndex : footerHighlightedIndex
+  let current = highlightedIndexRef.value
+
+  if (current < 0) {
+    current = getModelIndex(selectedModel.value)
+    if (current < 0) current = 0
+  }
+
+  highlightedIndexRef.value = (current + direction + MODELS.length) % MODELS.length
+}
+
+function chooseHighlightedModel(menu: 'center' | 'footer') {
+  const index = menu === 'center' ? centerHighlightedIndex.value : footerHighlightedIndex.value
+  if (index < 0 || index >= MODELS.length) return
+  const model = MODELS[index]
+  if (!model) return
+  chooseModel(model.id)
+}
+
+function handleModelMenuKeydown(menu: 'center' | 'footer', event: KeyboardEvent) {
+  if (menu === 'footer' && loading.value) return
+
+  const menuOpen = menu === 'center' ? centerSelectOpen.value : footerSelectOpen.value
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    if (!menuOpen) {
+      openModelMenu(menu)
+      return
+    }
+    moveModelHighlight(menu, 1)
+    return
+  }
+
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    if (!menuOpen) {
+      openModelMenu(menu)
+      return
+    }
+    moveModelHighlight(menu, -1)
+    return
+  }
+
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    if (!menuOpen) {
+      openModelMenu(menu)
+      return
+    }
+    chooseHighlightedModel(menu)
+    return
+  }
+
+  if (event.key === 'Escape' && menuOpen) {
+    event.preventDefault()
+    closeModelMenus()
+    return
+  }
+
+  if (event.key === 'Tab') {
+    closeModelMenus()
+  }
+}
+
+function handleClickOutside(event: MouseEvent) {
+  const target = event.target as Node
+  if (centerSelectRef.value && !centerSelectRef.value.contains(target)) {
+    centerSelectOpen.value = false
+  }
+  if (footerSelectRef.value && !footerSelectRef.value.contains(target)) {
+    footerSelectOpen.value = false
+  }
+}
+
+function handleEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    closeModelMenus()
+  }
+}
 
 const API_BASE = `${AppConfig.apiUrl}/api`
 const VERSION = 'v-2026-04-11-23-15'
@@ -108,12 +256,10 @@ async function summarize() {
   result.value = null
 
   try {
-    console.log('Summarize started for URL:', url.value)
     const token = await getAuthToken()
     if (!token) {
       throw new Error('Authentication not ready. Please try again.')
     }
-    console.log('Token acquired')
     const res = await fetch(`${API_BASE}/summarize`, {
       method: 'POST',
       headers: {
@@ -134,7 +280,6 @@ async function summarize() {
     }
 
     const data = await res.json()
-    console.log('Summarize success:', data)
     result.value = data.summary
     await fetchHistory()
   } catch (err: any) {
@@ -210,6 +355,14 @@ onMounted(() => {
   }
   checkMobile()
   window.addEventListener('resize', checkMobile)
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleEscape)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile)
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleEscape)
 })
 
 watch(isSignedIn, (newVal) => {
@@ -387,9 +540,37 @@ watch(isSignedIn, (newVal) => {
                     class="center-input"
                 />
                 <div class="center-actions">
-                  <select v-model="selectedModel" class="center-model-select">
-                    <option v-for="m in MODELS" :key="m.id" :value="m.id">{{ m.name }}</option>
-                  </select>
+                  <div ref="centerSelectRef" class="custom-select center-select">
+                    <button
+                        type="button"
+                        class="center-model-select custom-select-trigger"
+                        :class="{ open: centerSelectOpen }"
+                        :aria-expanded="centerSelectOpen"
+                        aria-haspopup="listbox"
+                        @keydown="handleModelMenuKeydown('center', $event)"
+                        @click="toggleModelMenu('center')"
+                    >
+                      <span class="select-value">{{ selectedModelName }}</span>
+                      <svg class="select-chevron" viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M5 7.5L10 12.5L15 7.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                    </button>
+                    <div v-if="centerSelectOpen" class="custom-select-menu" role="listbox">
+                      <button
+                          v-for="(m, index) in MODELS"
+                          :key="m.id"
+                          type="button"
+                          class="custom-select-option"
+                          :class="{ active: selectedModel === m.id, highlighted: centerHighlightedIndex === index }"
+                          role="option"
+                          :aria-selected="selectedModel === m.id"
+                          @mouseenter="centerHighlightedIndex = index"
+                          @click="chooseModel(m.id)"
+                      >
+                        {{ m.name }}
+                      </button>
+                    </div>
+                  </div>
                   <button @click="summarize" :disabled="loading || !url" class="center-start-btn">
                     Start Summary
                   </button>
@@ -416,9 +597,38 @@ watch(isSignedIn, (newVal) => {
               class="chat-input"
           />
           <div class="input-actions">
-            <select v-model="selectedModel" :disabled="loading" class="model-select">
-              <option v-for="m in MODELS" :key="m.id" :value="m.id">{{ m.name }}</option>
-            </select>
+            <div ref="footerSelectRef" class="custom-select footer-select">
+              <button
+                  type="button"
+                  class="model-select custom-select-trigger"
+                  :class="{ open: footerSelectOpen }"
+                  :disabled="loading"
+                  :aria-expanded="footerSelectOpen"
+                  aria-haspopup="listbox"
+                  @keydown="handleModelMenuKeydown('footer', $event)"
+                  @click="toggleModelMenu('footer')"
+              >
+                <span class="select-value">{{ selectedModelName }}</span>
+                <svg class="select-chevron" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M5 7.5L10 12.5L15 7.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <div v-if="footerSelectOpen" class="custom-select-menu compact" role="listbox">
+                <button
+                    v-for="(m, index) in MODELS"
+                    :key="m.id"
+                    type="button"
+                    class="custom-select-option compact"
+                    :class="{ active: selectedModel === m.id, highlighted: footerHighlightedIndex === index }"
+                    role="option"
+                    :aria-selected="selectedModel === m.id"
+                    @mouseenter="footerHighlightedIndex = index"
+                    @click="chooseModel(m.id)"
+                >
+                  {{ m.name }}
+                </button>
+              </div>
+            </div>
             <button @click="summarize" :disabled="loading || !url" class="send-btn">
               <span v-if="loading" class="spinner-small"></span>
               <span v-else>↑</span>
@@ -427,12 +637,6 @@ watch(isSignedIn, (newVal) => {
         </div>
         <p class="disclaimer">Summarizer is AI and can make mistakes. Please double-check responses.</p>
       </footer>
-      <div v-if="showProfile" class="profile-modal-overlay" @click.self="showProfile = false">
-        <div class="profile-modal-content">
-          <button class="close-profile-btn" @click="showProfile = false">×</button>
-          <UserProfile/>
-        </div>
-      </div>
     </main>
   </div>
 </template>
@@ -690,20 +894,6 @@ watch(isSignedIn, (newVal) => {
   align-items: center;
 }
 
-.user-avatar {
-  width: 32px;
-  height: 32px;
-  background-color: #e5e7eb;
-  color: #121212;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 0.875rem;
-  flex-shrink: 0;
-}
-
 .user-info {
   flex: 1;
   min-width: 0;
@@ -721,45 +911,6 @@ watch(isSignedIn, (newVal) => {
 .user-plan {
   font-size: 0.75rem;
   color: #9ca3af;
-}
-
-.footer-icons {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.footer-icon-btn {
-  background: transparent;
-  border: none;
-  color: #9ca3af;
-  padding: 0.25rem;
-  cursor: pointer;
-  font-size: 1.1rem;
-  border-radius: 0.25rem;
-}
-
-.footer-icon-btn:hover {
-  color: #fff;
-  background-color: #333;
-}
-
-.download-icon-collapsed {
-  font-size: 1.2rem;
-  cursor: pointer;
-  color: #9ca3af;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  margin-bottom: 0.5rem;
-}
-
-.download-icon-collapsed:hover {
-  background-color: #202020;
-  color: #fff;
 }
 
 /* Mobile Responsiveness */
@@ -811,31 +962,6 @@ watch(isSignedIn, (newVal) => {
   align-items: center;
   justify-content: space-between;
   padding: 0 1rem;
-}
-
-.app-title {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #9ca3af;
-  cursor: pointer;
-}
-
-.share-btn {
-  background-color: transparent;
-  border: 1px solid #424242;
-  color: #ececec;
-  padding: 0.4rem 0.75rem;
-  border-radius: 0.5rem;
-  font-size: 0.75rem;
-  cursor: pointer;
-}
-
-.menu-btn {
-  background: none;
-  border: none;
-  font-size: 1.25rem;
-  cursor: pointer;
-  color: #9ca3af;
 }
 
 .content-area {
@@ -1056,27 +1182,131 @@ watch(isSignedIn, (newVal) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.6rem;
+}
+
+.custom-select {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.custom-select.center-select {
+  flex: 0 0 240px;
+  width: 240px;
+}
+
+.custom-select.footer-select {
+  flex: 0 0 220px;
+  width: 220px;
+}
+
+.custom-select-trigger {
+  width: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+  padding-right: 2.25rem;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.select-value {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+}
+
+.custom-select-trigger:disabled {
+  cursor: not-allowed;
+}
+
+.select-chevron {
+  position: absolute;
+  right: 0.8rem;
+  top: 50%;
+  width: 0.95rem;
+  height: 0.95rem;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  pointer-events: none;
+  transition: transform 0.2s ease;
+}
+
+.custom-select-trigger.open .select-chevron {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.custom-select-menu {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem;
+  border-radius: 0.75rem;
+  border: 1px solid #343434;
+  background-color: #181818;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.custom-select-menu.compact {
+  min-width: 100%;
+}
+
+.custom-select-option {
+  width: 100%;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #e5e7eb;
+  font-size: 1rem;
+  text-align: left;
+  padding: 0.65rem 0.8rem;
+  cursor: pointer;
+}
+
+.custom-select-option.compact {
+  font-size: 0.9rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.custom-select-option:hover {
+  background-color: #252525;
+}
+
+.custom-select-option.highlighted {
+  background-color: #252525;
+}
+
+.custom-select-option.active {
+  background-color: #065f46;
+  color: #d1fae5;
 }
 
 .model-select {
-  background: #2a2a2a;
-  border: 1px solid #424242;
-  border-radius: 2rem;
-  color: #9ca3af;
+  background-color: #1f1f1f;
+  border: 1px solid #3a3a3a;
+  border-radius: 0.75rem;
+  color: #d1d5db;
   font-size: 0.875rem;
-  cursor: pointer;
   outline: none;
-  padding: 0.25rem 2rem 0.25rem 0.75rem;
-  appearance: none;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.5rem center;
-  background-size: 1em;
+  padding: 0.45rem 2rem 0.45rem 0.85rem;
 }
 
-.model-select option {
-  background-color: #2f2f2f;
-  color: #ececec;
+.model-select:hover {
+  border-color: #4a4a4a;
+}
+
+.model-select:focus {
+  border-color: #10b981;
 }
 
 .send-btn {
@@ -1179,67 +1409,19 @@ watch(isSignedIn, (newVal) => {
   flex: 1;
   background-color: #1a1a1a;
   border: 1px solid #2a2a2a;
-  border-radius: 2rem;
+  border-radius: 0.75rem;
   color: #ececec;
-  padding: 0.75rem 1.25rem;
+  padding: 0.75rem 2.6rem 0.75rem 1rem;
   font-size: 1rem;
   outline: none;
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 1rem center;
-  background-size: 1em;
+}
+
+.center-model-select:hover {
+  border-color: #3a3a3a;
 }
 
 .center-model-select:focus {
   border-color: #10b981;
 }
 
-.center-model-select option {
-  background-color: #2f2f2f;
-  color: #ececec;
-}
-
-.profile-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background-color: rgba(0, 0, 0, 0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  backdrop-filter: blur(4px);
-}
-
-.profile-modal-content {
-  background-color: #1a1a1a;
-  border-radius: 1rem;
-  padding: 1rem;
-  position: relative;
-  max-width: 90vw;
-  max-height: 90vh;
-  overflow: auto;
-  border: 1px solid #333;
-}
-
-.close-profile-btn {
-  position: absolute;
-  top: 0.5rem;
-  right: 1rem;
-  background: none;
-  border: none;
-  color: #9ca3af;
-  font-size: 2rem;
-  cursor: pointer;
-  z-index: 2001;
-  transition: color 0.2s;
-}
-
-.close-profile-btn:hover {
-  color: #fff;
-}
 </style>
