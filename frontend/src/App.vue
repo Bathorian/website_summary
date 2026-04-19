@@ -2,6 +2,7 @@
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue'
 import {useAuth, SignInButton, UserButton, useClerk, useSession, useUser} from '@clerk/vue'
 import {AppConfig} from '@/lib/config'
+import MarkdownIt from 'markdown-it'
 
 const url = ref('')
 const selectedModel = ref('google/gemini-2.5-flash')
@@ -11,6 +12,51 @@ const error = ref<string | null>(null)
 const history = ref<any[]>([])
 const sidebarCollapsed = ref(window.innerWidth <= 768)
 const isMobile = ref(false)
+const isEditingSummary = ref(false)
+const editableSummaryText = ref('')
+
+const markdownRenderer = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+  typographer: true,
+})
+
+const renderedSummaryHtml = computed(() => {
+  const summaryText = result.value?.summary
+  if (!summaryText) return '<p>No summary available.</p>'
+  return markdownRenderer.render(String(summaryText))
+})
+
+function summaryToPlainText(summaryText: string): string {
+  const html = markdownRenderer.render(summaryText)
+  const container = document.createElement('div')
+  container.innerHTML = html
+  return (container.innerText || container.textContent || '').trim()
+}
+
+function startEditingSummary() {
+  if (!result.value?.summary) return
+  editableSummaryText.value = summaryToPlainText(String(result.value.summary))
+  isEditingSummary.value = true
+}
+
+function saveEditedSummary() {
+  if (!result.value) return
+  const cleaned = editableSummaryText.value.trim()
+  result.value.summary = cleaned
+  upsertHistoryItem(result.value)
+  isEditingSummary.value = false
+}
+
+function cancelEditingSummary() {
+  isEditingSummary.value = false
+  if (result.value?.summary) {
+    editableSummaryText.value = summaryToPlainText(String(result.value.summary))
+  } else {
+    editableSummaryText.value = ''
+  }
+}
 
 const auth = useAuth()
 const clerk = useClerk()
@@ -242,6 +288,11 @@ async function fetchHistory() {
   }
 }
 
+function upsertHistoryItem(item: any) {
+  if (!item?.id) return
+  history.value = [item, ...history.value.filter((existing) => existing.id !== item.id)]
+}
+
 async function summarize() {
   if (!url.value) return
   if (!isSignedIn.value) {
@@ -281,7 +332,10 @@ async function summarize() {
 
     const data = await res.json()
     result.value = data.summary
-    await fetchHistory()
+    editableSummaryText.value = summaryToPlainText(String(data.summary?.summary || ''))
+    isEditingSummary.value = false
+    upsertHistoryItem(data.summary)
+    void fetchHistory()
   } catch (err: any) {
     error.value = err.message
   } finally {
@@ -291,6 +345,8 @@ async function summarize() {
 
 function selectHistoryItem(item: any) {
   result.value = item
+  editableSummaryText.value = summaryToPlainText(String(item?.summary || ''))
+  isEditingSummary.value = false
   url.value = item.url
   if (isMobile.value) {
     sidebarCollapsed.value = true
@@ -299,6 +355,8 @@ function selectHistoryItem(item: any) {
 
 function startNew() {
   result.value = null
+  editableSummaryText.value = ''
+  isEditingSummary.value = false
   error.value = null
   url.value = ''
 }
@@ -306,9 +364,13 @@ function startNew() {
 const copySuccess = ref(false)
 
 async function copyToClipboard() {
-  if (!result.value?.summary) return
+  if (!result.value?.summary && !editableSummaryText.value) return
   try {
-    await navigator.clipboard.writeText(result.value.summary)
+    const plainText = isEditingSummary.value
+        ? editableSummaryText.value.trim()
+        : summaryToPlainText(String(result.value.summary))
+    if (!plainText) return
+    await navigator.clipboard.writeText(plainText)
     copySuccess.value = true
     setTimeout(() => {
       copySuccess.value = false
@@ -506,16 +568,25 @@ watch(isSignedIn, (newVal) => {
               <div class="result-meta">
                 <a :href="result.url" target="_blank" class="source-link">Source ↗</a>
               </div>
-              <div class="result-actions">This summary is editable
+              <div class="result-actions">
+                <button v-if="!isEditingSummary" class="result-mode-btn" @click="startEditingSummary">
+                  Edit summary
+                </button>
+                <template v-else>
+                  <button class="result-mode-btn primary" @click="saveEditedSummary">Save</button>
+                  <button class="result-mode-btn" @click="cancelEditingSummary">Cancel</button>
+                </template>
               </div>
             </div>
             <div class="summary-content">
-            <textarea
-                class="summary-textarea"
-                v-model="result.summary"
-                rows="25"
-                placeholder="Edit the summary here..."
-            ></textarea>
+              <textarea
+                  v-if="isEditingSummary"
+                  class="summary-editor"
+                  v-model="editableSummaryText"
+                  rows="24"
+                  placeholder="Edit summary text..."
+              ></textarea>
+              <article v-else class="summary-markdown" v-html="renderedSummaryHtml"></article>
             </div>
           </div>
 
@@ -937,6 +1008,14 @@ watch(isSignedIn, (newVal) => {
     justify-content: center;
   }
 
+  .result-actions {
+    flex-wrap: wrap;
+  }
+
+  .summary-markdown {
+    padding: 1rem;
+  }
+
   .center-actions {
     flex-direction: column;
   }
@@ -1038,37 +1117,148 @@ watch(isSignedIn, (newVal) => {
   align-items: center;
 }
 
+.result-actions {
+  margin-top: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.result-mode-btn {
+  background-color: #1f1f1f;
+  color: #e5e7eb;
+  border: 1px solid #343434;
+  border-radius: 0.5rem;
+  padding: 0.38rem 0.72rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.result-mode-btn:hover {
+  background-color: #2a2a2a;
+  border-color: #4a4a4a;
+}
+
+.result-mode-btn.primary {
+  background-color: #10b981;
+  border-color: #10b981;
+  color: #ffffff;
+}
+
+.result-mode-btn.primary:hover {
+  background-color: #059669;
+  border-color: #059669;
+}
+
 .summary-content {
   background-color: #1a1a1a;
   padding: 0.5rem;
   border-radius: 0.75rem;
   border: 1px solid #2a2a2a;
   display: flex;
+  min-height: 600px;
 }
 
-.summary-textarea {
+.summary-editor {
   width: 100%;
   min-height: 600px;
   background-color: transparent;
   border: none;
   color: #ececec;
   font-family: inherit;
-  font-size: 1.1rem;
-  line-height: 1.6;
+  font-size: 1.05rem;
+  line-height: 1.65;
   resize: vertical;
   padding: 1.5rem;
   outline: none;
-  scrollbar-width: thin;
-  scrollbar-color: #333 transparent;
 }
 
-.summary-textarea::-webkit-scrollbar {
-  width: 6px;
+.summary-markdown {
+  width: 100%;
+  padding: 1.8rem;
+  text-align: left;
+  line-height: 1.75;
+  color: #e5e7eb;
+  font-size: 1.02rem;
+  overflow-wrap: anywhere;
 }
 
-.summary-textarea::-webkit-scrollbar-thumb {
-  background-color: #333;
-  border-radius: 10px;
+.summary-markdown :deep(h1),
+.summary-markdown :deep(h2),
+.summary-markdown :deep(h3) {
+  color: #f3f4f6;
+  line-height: 1.3;
+  margin: 1.4rem 0 0.8rem;
+}
+
+.summary-markdown :deep(h1) {
+  font-size: 1.75rem;
+}
+
+.summary-markdown :deep(h2) {
+  font-size: 1.4rem;
+}
+
+.summary-markdown :deep(h3) {
+  font-size: 1.15rem;
+}
+
+.summary-markdown :deep(p) {
+  margin: 0 0 1rem;
+}
+
+.summary-markdown :deep(ul),
+.summary-markdown :deep(ol) {
+  margin: 0 0 1rem;
+  padding-left: 1.3rem;
+}
+
+.summary-markdown :deep(li + li) {
+  margin-top: 0.35rem;
+}
+
+.summary-markdown :deep(blockquote) {
+  margin: 1rem 0;
+  border-left: 3px solid #10b981;
+  padding: 0.35rem 0 0.35rem 0.9rem;
+  color: #d1d5db;
+  background: rgba(16, 185, 129, 0.08);
+  border-radius: 0 0.4rem 0.4rem 0;
+}
+
+.summary-markdown :deep(code) {
+  background-color: #232323;
+  border: 1px solid #333;
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.92em;
+}
+
+.summary-markdown :deep(pre) {
+  background-color: #191919;
+  border: 1px solid #333;
+  border-radius: 0.65rem;
+  padding: 0.9rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+.summary-markdown :deep(pre code) {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.summary-markdown :deep(a) {
+  color: #34d399;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(52, 211, 153, 0.4);
+}
+
+.summary-markdown :deep(a:hover) {
+  color: #6ee7b7;
 }
 
 .welcome-view {
