@@ -500,7 +500,6 @@ watch(isSignedIn, (newVal) => {
             <UserButton after-sign-out-url="/" @click.stop/>
             <div class="user-info" v-if="!sidebarCollapsed">
               <div class="user-name">{{ user?.firstName || user?.username || 'User' }}</div>
-              <div class="user-plan">Free plan</div>
             </div>
             <div class="sign-out-icon" v-if="!sidebarCollapsed">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
